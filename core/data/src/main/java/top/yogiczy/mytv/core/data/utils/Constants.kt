@@ -28,33 +28,15 @@ object Constants {
 
     /**
      * IPTV直播源
+     *
+     * 只保留杭州电信多线路源。该源一个频道标签下跟多行地址（多线路），
+     * 解析由 M3uIptvParser 处理；部分频道带 http-user-agent 属性，按频道生效。
      */
     val IPTV_SOURCE_LIST = IptvSourceList(
         listOf(
             IptvSource(
-                name = "默认直播源-iptvs",
-                url = "https://iptvs.mybacc.com/api/export/m3u",
-            ),
-            IptvSource(
-                name = "默认直播源 my吧",
-                url = "https://tv.mybacc.com/tv/"
-            ),
-            IptvSource(
-                name = "默认直播源 fanmingming（IPV6）",
-                url = "https://live.fanmingming.cn/tv/m3u/ipv6.m3u",
-            ),
-            IptvSource(
-                name = "默认直播源 冰茶",
-                url = GITHUB_PROXY+"https://raw.githubusercontent.com/ls125781003/tvboxtg/refs/heads/main/%E9%A5%AD%E5%A4%AA%E7%A1%AC/lives/%E5%86%B0%E8%8C%B6.txt",
-            ),
-            IptvSource(
-                name = "默认直播源 yuanzl77（IPV4/IPV6）",
-                url = GITHUB_PROXY+"https://raw.githubusercontent.com/yuanzl77/IPTV/main/live.m3u",
-            ),
-            IptvSource(
-                name = "默认直播源-电影列表",
-                url = "https://iptv-cdn.mybacc.com/list/movies.txt",
-//                url = GITHUB_PROXY+"https://raw.githubusercontent.com/minyoad/my-iptv/refs/heads/master/list/movies.txt",
+                name = "默认直播源 杭州电信（多线路）",
+                url = "https://gh-proxy.org/https://raw.githubusercontent.com/wangjhsir/iptv/refs/heads/main/hangzhou-multi-ip.m3u",
             ),
         )
     )
