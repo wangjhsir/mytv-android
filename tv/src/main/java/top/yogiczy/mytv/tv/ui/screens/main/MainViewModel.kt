@@ -65,7 +65,9 @@ class MainViewModel(
 
     fun init() {
         viewModelScope.launch {
-            _uiState.value = MainUiState.Loading()
+            _uiState.value = MainUiState.Loading(
+                if (Configs.elderMode) "正在获取最新直播源..." else null
+            )
 
             // 1. 尝试并行加载混合模式配置
             val hybridJob = launch {
@@ -74,8 +76,12 @@ class MainViewModel(
                 }
             }
 
-            // 2. 尝试从缓存快速恢复频道列表
-            val cachedChannelGroupList = IptvRepository(Configs.iptvSourceCurrent).getCachedChannelGroupList()
+            // 2. 尝试从缓存快速恢复频道列表。
+            // 长辈模式不读缓存：跳过快速恢复，直接走下面的联网刷新分支，
+            // 期间 uiState 保持 Loading，加载动画会一直转到拿到数据为止。
+            val cachedChannelGroupList = if (Configs.elderMode) null
+            else IptvRepository(Configs.iptvSourceCurrent).getCachedChannelGroupList()
+
             if (cachedChannelGroupList != null) {
                 log.i("从缓存中快速恢复频道列表")
                 val hydrated = hybridChannel(cachedChannelGroupList)
@@ -89,7 +95,8 @@ class MainViewModel(
                     refreshEpg()
                 }
             } else {
-                // 无缓存时，顺序执行以保证首次加载体验
+                // 无缓存（含长辈模式）时，顺序执行以保证首次加载体验：
+                // 先拿到频道列表再拉节目单，期间停留在加载状态
                 hybridJob.join()
                 refreshChannel(showLoading = true)
                 refreshEpg()
@@ -216,8 +223,14 @@ class MainViewModel(
         var changed = false
 
         flow {
-            val iptvRepository = IptvRepository(Configs.iptvSourceCurrent)
-            emit(iptvRepository.getChannelGroupList(cacheTime = Configs.iptvSourceCacheTime))
+            // 长辈模式下 Repository 会跳过读写缓存，每次都真正联网拉取
+            val iptvRepository = IptvRepository(
+                Configs.iptvSourceCurrent,
+                disableCache = Configs.elderMode,
+            )
+            val channelGroupList =
+                iptvRepository.getChannelGroupList(cacheTime = Configs.iptvSourceCacheTime)
+            emit(ChannelLoadResult(channelGroupList, iptvRepository.lastLoadUsedCacheFallback))
         }
             .retryWhen { _, attempt ->
                 if (attempt >= Constants.HTTP_RETRY_COUNT) return@retryWhen false
@@ -237,7 +250,17 @@ class MainViewModel(
                     log.e("后台刷新直播源失败", it)
                 }
             }
-            .map { hybridChannel(it) }
+            .map { (channelGroupList, usedCacheFallback) ->
+                // 长辈模式联网失败时会回退到旧缓存，内容可能过期。
+                // 不提示的话，用户会误以为看到的就是最新直播源。
+                if (usedCacheFallback) {
+                    Snackbar.show(
+                        "网络异常，已使用本地缓存的直播源（可能不是最新）",
+                        type = SnackbarType.ERROR,
+                    )
+                }
+                hybridChannel(channelGroupList)
+            }
             .map {
                 // 只有当数据真的变化时才更新 UI，避免冗余刷新
                 val currentState = _uiState.value
@@ -381,6 +404,12 @@ class MainViewModel(
         val channelListUpdated: SharedFlow<ChannelGroupList> = CHANNEL_LIST_UPDATED_SIGNAL.asSharedFlow()
     }
 }
+
+/** 一次直播源加载的结果，附带是否走了「联网失败回退旧缓存」这条兜底路径 */
+private data class ChannelLoadResult(
+    val channelGroupList: ChannelGroupList,
+    val usedCacheFallback: Boolean,
+)
 
 sealed interface MainUiState {
     data class Loading(val message: String? = null) : MainUiState

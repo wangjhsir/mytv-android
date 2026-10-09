@@ -193,6 +193,13 @@ class SettingsViewModel : ViewModel() {
             Configs.iptvAutoProbe = value
         }
 
+    private var _elderMode by mutableStateOf(Configs.elderMode)
+    var elderMode: Boolean
+        get() = _elderMode
+        set(value) {
+            Configs.elderMode = value
+        }
+
     private var _iptvAutoProbeDailyLimit by mutableIntStateOf(Configs.iptvAutoProbeDailyLimit)
     var iptvAutoProbeDailyLimit: Int
         get() = _iptvAutoProbeDailyLimit
@@ -417,6 +424,7 @@ class SettingsViewModel : ViewModel() {
                     Configs.KEY.IPTV_HYBRID_MODE -> _iptvHybridMode = Configs.iptvHybridMode
                     Configs.KEY.IPTV_AUTO_PROBE -> _iptvAutoProbe = Configs.iptvAutoProbe
                     Configs.KEY.IPTV_AUTO_PROBE_DAILY_LIMIT -> _iptvAutoProbeDailyLimit = Configs.iptvAutoProbeDailyLimit
+                    Configs.KEY.ELDER_MODE -> _elderMode = Configs.elderMode
                     Configs.KEY.EPG_ENABLE -> _epgEnable = Configs.epgEnable
                     Configs.KEY.EPG_SOURCE_CURRENT -> _epgSourceCurrent = Configs.epgSourceCurrent
                     Configs.KEY.EPG_SOURCE_LIST -> _epgSourceList = Configs.epgSourceList

@@ -81,6 +81,24 @@ fun SettingsCategoryIptv(
         }
 
         item {
+            SettingsListItem(
+                headlineContent = "长辈模式",
+                supportingContent = if (settingsViewModel.elderMode)
+                    "启动后直接联网获取最新直播源，不读写缓存；拿到数据前显示加载动画"
+                else "启动时先读本地缓存快速出图，之后再后台刷新",
+                trailingContent = {
+                    Switch(settingsViewModel.elderMode, null)
+                },
+                onSelected = {
+                    settingsViewModel.elderMode = !settingsViewModel.elderMode
+                    // 立即生效：重走一遍启动流程，长辈模式下会跳过缓存直接联网拉取
+                    mainViewModel.init()
+                },
+                remoteConfig = true,
+            )
+        }
+
+        item {
             val popupManager = LocalPopupManager.current
             val focusRequester = remember { FocusRequester() }
             var visible by remember { mutableStateOf(false) }
@@ -88,6 +106,7 @@ fun SettingsCategoryIptv(
             SettingsListItem(
                 modifier = Modifier.focusRequester(focusRequester),
                 headlineContent = "直播源缓存时间",
+                supportingContent = if (settingsViewModel.elderMode) "长辈模式已开启，此项不生效" else null,
                 trailingContent = when (settingsViewModel.iptvSourceCacheTime) {
                     0L -> "不缓存"
                     Long.MAX_VALUE -> "永久"

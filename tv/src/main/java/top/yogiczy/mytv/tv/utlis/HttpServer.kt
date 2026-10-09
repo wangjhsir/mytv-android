@@ -210,6 +210,7 @@ object HttpServer : Loggable() {
                         iptvSourceCurrent = Configs.iptvSourceCurrent,
                         iptvSourceList = Configs.iptvSourceList,
                         iptvSourceCacheTime = Configs.iptvSourceCacheTime,
+                        elderMode = Configs.elderMode,
                         iptvPlayableHostList = Configs.iptvPlayableHostList,
                         iptvChannelNoSelectEnable = Configs.iptvChannelNoSelectEnable,
                         iptvChannelFavoriteEnable = Configs.iptvChannelFavoriteEnable,
@@ -261,6 +262,7 @@ object HttpServer : Loggable() {
         Configs.iptvSourceCurrent = configs.iptvSourceCurrent
         Configs.iptvSourceList = configs.iptvSourceList
         Configs.iptvSourceCacheTime = configs.iptvSourceCacheTime
+        Configs.elderMode = configs.elderMode
         Configs.iptvPlayableHostList = configs.iptvPlayableHostList
         Configs.iptvChannelNoSelectEnable = configs.iptvChannelNoSelectEnable
         Configs.iptvChannelFavoriteEnable = configs.iptvChannelFavoriteEnable
@@ -377,6 +379,7 @@ private data class AllSettings(
     val iptvSourceCurrent: IptvSource = IptvSource(),
     val iptvSourceList: IptvSourceList = IptvSourceList(),
     val iptvSourceCacheTime: Long = 0,
+    val elderMode: Boolean = false,
     val iptvPlayableHostList: Set<String> = emptySet(),
     val iptvChannelNoSelectEnable: Boolean = false,
     val iptvChannelFavoriteEnable: Boolean = false,

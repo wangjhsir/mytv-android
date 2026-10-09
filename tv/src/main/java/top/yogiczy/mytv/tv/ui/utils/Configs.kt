@@ -63,6 +63,12 @@ object Configs {
         /** 直播源缓存时间（毫秒） */
         IPTV_SOURCE_CACHE_TIME,
 
+        /**
+         * 长辈模式：不缓存直播源，启动即联网刷新，拿到数据前显示加载动画。
+         * 会覆盖直播源缓存时间设置。
+         */
+        ELDER_MODE,
+
         /** 直播源可播放host列表 */
         IPTV_PLAYABLE_HOST_LIST,
 
@@ -279,6 +285,23 @@ object Configs {
         set(value) {
             SP.putLong(KEY.IPTV_SOURCE_CACHE_TIME.name, value)
             notifyChange(KEY.IPTV_SOURCE_CACHE_TIME)
+        }
+
+    /**
+     * 长辈模式。
+     *
+     * 开启后：
+     *  - 直播源不读也不写缓存文件（不占用设备存储，也不会拿到过期数据）
+     *  - 启动时第一件事就是联网拉取最新直播源，拿到数据前显示加载动画
+     *  - 拉取失败时回退读一次本地缓存，保证断网时仍能看电视
+     *
+     * 该开关会覆盖[直播源缓存时间][iptvSourceCacheTime]：长辈模式下缓存时间不再生效。
+     */
+    var elderMode: Boolean
+        get() = SP.getBoolean(KEY.ELDER_MODE.name, false)
+        set(value) {
+            SP.putBoolean(KEY.ELDER_MODE.name, value)
+            notifyChange(KEY.ELDER_MODE)
         }
 
     var iptvChannelUrlIdx: Map<String, Int>
