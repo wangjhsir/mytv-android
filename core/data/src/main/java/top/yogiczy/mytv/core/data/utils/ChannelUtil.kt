@@ -419,4 +419,39 @@ object ChannelUtil {
             .replace("PLTV", "tvod")
             .replace("pltv", "tvod")
     }
+
+    /**
+     * 取 URL 的服务器地址（host:port），作为「线路服务器」的标识。
+     *
+     * 同一个直播源里，不同频道常常复用同一批服务器
+     * （例如杭州源的 5 台 UDP 代理服务全部频道），所以线路失败要按服务器归并统计，
+     * 否则同一台服务器挂掉后要每个频道各失败若干次才排得完。
+     *
+     * 例：`http://183.156.225.89:9050/udp/233.50.201.100:5140` -> `183.156.225.89:9050`
+     */
+    fun urlHost(url: String): String {
+        val authority = url.substringAfter("://", "").substringBefore('/')
+        // 没有 scheme 的串（罕见）退回原串，避免所有异常串挤在同一个空 key 上
+        return authority.ifBlank { url }
+    }
+
+    /**
+     * 从 [fromIdx]（含）起按环形顺序找第一条服务器未被拉黑的线路下标。
+     *
+     * 找完一圈都没有（该频道的线路全被拉黑）时返回 -1，
+     * 此时调用方应忽略黑名单照常选择，否则这个频道就彻底没法播了。
+     */
+    fun nextPlayableUrlIdx(
+        urlList: List<String>,
+        fromIdx: Int,
+        blacklistedHosts: Set<String>,
+    ): Int {
+        if (urlList.isEmpty()) return -1
+
+        for (offset in urlList.indices) {
+            val idx = (fromIdx + offset).mod(urlList.size)
+            if (urlHost(urlList[idx]) !in blacklistedHosts) return idx
+        }
+        return -1
+    }
 }

@@ -33,6 +33,7 @@ import top.yogiczy.mytv.core.data.utils.Constants
 import top.yogiczy.mytv.core.data.utils.Loggable
 import top.yogiczy.mytv.tv.ui.material.Snackbar
 import top.yogiczy.mytv.tv.ui.screens.settings.SettingsViewModel
+import top.yogiczy.mytv.tv.ui.utils.Configs
 import top.yogiczy.mytv.tv.ui.screens.videoplayer.VideoPlayerState
 import top.yogiczy.mytv.tv.ui.screens.videoplayer.rememberVideoPlayerState
 import java.net.URI
@@ -144,7 +145,7 @@ class MainContentState(
         }
 
         videoPlayerState.onReady {
-            settingsViewModel.iptvPlayableHostList += getUrlHost(_currentChannel.urlList[_currentChannelUrlIdx])
+            settingsViewModel.iptvPlayableHostList += ChannelUtil.urlHost(_currentChannel.urlList[_currentChannelUrlIdx])
             coroutineScope.launch {
                 val name = _currentChannel.name
                 val urlIdx = _currentChannelUrlIdx
@@ -159,16 +160,28 @@ class MainContentState(
 
         videoPlayerState.onError {
             if (_currentPlaybackEpgProgramme != null) {
-                // 回放播放错误时，切换到直播
+                // 回放播放错误时，切换到直播。
+                // 不计入线路失败统计：回看失败多半是源不支持回看，
+                // 计进去会把本来能正常直播的服务器误拉黑。
                 if (_currentChannelUrlIdx < _currentChannel.urlList.size - 1) {
                     changeCurrentChannel(_currentChannel, _currentChannelUrlIdx)
                 }
                 return@onError
             }
 
-            settingsViewModel.iptvPlayableHostList -= getUrlHost(_currentChannel.urlList[_currentChannelUrlIdx])
+            val failedHost = ChannelUtil.urlHost(_currentChannel.urlList[_currentChannelUrlIdx])
+
+            // 同一台服务器累计失败达阈值即拉黑，之后换到任何频道都不会再选它上面的线路
+            if (Configs.recordIptvUrlHostFailure(failedHost)) {
+                log.w("线路服务器失败达 ${Constants.IPTV_URL_HOST_BLACKLIST_THRESHOLD} 次，已拉黑：$failedHost")
+                Snackbar.show("线路不可用，已拉黑：$failedHost")
+            }
+
+            settingsViewModel.iptvPlayableHostList -= failedHost
 
             if (_currentChannelUrlIdx < _currentChannel.urlList.size - 1) {
+                // 交给 getUrlIdx 跳过已拉黑的服务器；都被拉黑时它会忽略黑名单，
+                // 不会出现「无处可切」的死循环
                 changeCurrentChannel(_currentChannel, _currentChannelUrlIdx + 1)
             }
         }
@@ -252,30 +265,51 @@ class MainContentState(
         }
     }
 
-    private fun getUrlIdx(urlList: List<String>, urlIdx: Int? = null): Int {
-        val idx = if (urlIdx == null) settingsViewModel.getIptvChannelUrlIdx(_currentChannel.name)
-//            urlList.indexOfFirst {
-//            settingsViewModel.iptvPlayableHostList.contains(getUrlHost(it))
-//        }
-        else (urlIdx + urlList.size) % urlList.size
+    /**
+     * 选出要播放的线路下标。
+     *
+     * @param urlIdx 显式指定的线路；为 null 时用「该频道上次播成功的线路」
+     * @param skipBlacklisted 跳过已被拉黑的服务器（失败达阈值的那些）
+     */
+    private fun getUrlIdx(
+        urlList: List<String>,
+        urlIdx: Int? = null,
+        skipBlacklisted: Boolean = true,
+    ): Int {
+        val preferred = urlIdx?.let { (it + urlList.size) % urlList.size }
+            ?: settingsViewModel.getIptvChannelUrlIdx(_currentChannel.name)
 
-        return max(0, min(idx, urlList.size - 1))
+        if (skipBlacklisted) {
+            val usable = ChannelUtil.nextPlayableUrlIdx(
+                urlList = urlList,
+                fromIdx = preferred,
+                blacklistedHosts = Configs.iptvBlacklistedUrlHosts,
+            )
+            // -1 表示该频道的线路全被拉黑：此时忽略黑名单照常选，
+            // 否则这个频道就彻底没法播了
+            if (usable >= 0) return usable
+        }
+
+        return max(0, min(preferred, urlList.size - 1))
     }
 
     /**
      * @param force 强制重新播放。为 true 时跳过幂等守卫，
      * 即使频道、线路、回看节目都与当前完全一致也重新 prepare。
+     * @param skipBlacklistedUrl 选线路时是否跳过已被拉黑的服务器。用户在「线路」面板里
+     * 显式指定线路时传 false —— 显式选择应当被尊重，他多半就是想试那条。
      */
     fun changeCurrentChannel(
         channel: Channel,
         urlIdx: Int? = null,
         playbackEpgProgramme: EpgProgramme? = null,
         force: Boolean = false,
+        skipBlacklistedUrl: Boolean = true,
     ) {
         if (!force && channel == _currentChannel && urlIdx == _currentChannelUrlIdx && playbackEpgProgramme == _currentPlaybackEpgProgramme) return
 
         if (channel == _currentChannel && urlIdx != _currentChannelUrlIdx) {
-            settingsViewModel.iptvPlayableHostList -= getUrlHost(_currentChannel.urlList[_currentChannelUrlIdx])
+            settingsViewModel.iptvPlayableHostList -= ChannelUtil.urlHost(_currentChannel.urlList[_currentChannelUrlIdx])
         }
 
         _isTempChannelScreenVisible = true
@@ -284,7 +318,7 @@ class MainContentState(
         settingsViewModel.iptvLastChannelIdx =
             channelGroupListProvider().channelIdx(_currentChannel)
 
-        _currentChannelUrlIdx = getUrlIdx(_currentChannel.urlList, urlIdx)
+        _currentChannelUrlIdx = getUrlIdx(_currentChannel.urlList, urlIdx, skipBlacklistedUrl)
 
         _currentPlaybackEpgProgramme = playbackEpgProgramme
 
@@ -445,8 +479,4 @@ fun rememberMainContentState(
             context = context,  // 传递context
         )
     }
-}
-
-private fun getUrlHost(url: String): String {
-    return url.split("://").getOrElse(1) { "" }.split("/").firstOrNull() ?: url
 }

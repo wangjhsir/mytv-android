@@ -57,6 +57,15 @@ object Constants {
     const val IPTV_SOURCE_CHECK_INTERVAL = 1000 * 60 * 30L // 30分钟
 
     /**
+     * 线路服务器（host:port）累计播放失败多少次后拉黑。
+     *
+     * 拉黑只在选线路时生效（跳过该服务器上的所有线路），
+     * 且全部线路都被拉黑时忽略黑名单，避免频道彻底没法播。
+     * 计数只在下一次刷新直播源时清空。
+     */
+    const val IPTV_URL_HOST_BLACKLIST_THRESHOLD = 3
+
+    /**
      * 节目单来源
      */
     val EPG_SOURCE_LIST = EpgSourceList(

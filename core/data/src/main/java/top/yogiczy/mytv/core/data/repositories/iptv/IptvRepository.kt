@@ -55,6 +55,16 @@ class IptvRepository(
     var lastLoadUsedCacheFallback: Boolean = false
         private set
 
+    /**
+     * 最近一次 [getChannelGroupList] 是否真的联网取过内容（304 也算，那也是一次成功的协商）。
+     *
+     * 用于判断「直播源刷新过」：纯读过期窗口内的本地缓存不算刷新。
+     * 上层据此重置线路失败统计——否则常规模式每 30 分钟的定时检查一跑，
+     * 就把刚攒下的拉黑记录清空了。
+     */
+    var lastLoadHitNetwork: Boolean = false
+        private set
+
     private val idGenerator = IdGenerator()
 
     private val etagKey = "iptv_etag_${source.url.hashCode().toUInt().toString(16)}"
@@ -107,12 +117,17 @@ class IptvRepository(
      */
     suspend fun getChannelGroupList(cacheTime: Long): ChannelGroupList {
         lastLoadUsedCacheFallback = false
+        lastLoadHitNetwork = false
         try {
             val rawData = when {
                 // 本地源的 url 就是磁盘上的文件路径，没有「联网获取」一说，直接读文件
                 source.isLocal -> getOrRefresh(Long.MAX_VALUE) { fetchSource(source.url) }
                 disableCache -> fetchLatestOrFallbackToCache()
-                else -> getOrRefresh(cacheTime) { fetchSource(source.url) }
+                else -> getOrRefresh(cacheTime) {
+                    // 只有缓存过期时才会走到这里，说明确实联网刷新了
+                    lastLoadHitNetwork = true
+                    fetchSource(source.url)
+                }
             }
             return parseData(rawData)
         } catch (ex: Exception) {
@@ -134,7 +149,10 @@ class IptvRepository(
             log.e("长辈模式获取最新直播源失败，尝试回退本地缓存", it)
         }
 
-        outcome.getOrNull()?.takeIf { it.isNotBlank() }?.let { return it }
+        outcome.getOrNull()?.takeIf { it.isNotBlank() }?.let {
+            lastLoadHitNetwork = true
+            return it
+        }
 
         val cached = getCacheData()
         if (!cached.isNullOrBlank()) {

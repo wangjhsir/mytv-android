@@ -462,6 +462,8 @@ class SettingsViewModel : ViewModel() {
     @OptIn(coil.annotation.ExperimentalCoilApi::class)
     fun clearCache(context: Context, onComplete: () -> Unit = {}) {
         iptvPlayableHostList = emptySet()
+        // 线路失败统计也一并清掉：清缓存属于用户主动「从头来过」
+        Configs.iptvUrlHostFailureCount = emptyMap()
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
                 // 清理所有直播源和节目单文件缓存

@@ -11,6 +11,7 @@ import top.yogiczy.mytv.core.data.entities.epgsource.EpgSource
 import top.yogiczy.mytv.core.data.entities.epgsource.EpgSourceList
 import top.yogiczy.mytv.core.data.entities.iptvsource.IptvSource
 import top.yogiczy.mytv.core.data.entities.iptvsource.IptvSourceList
+import top.yogiczy.mytv.core.data.utils.ChannelUtil
 import top.yogiczy.mytv.core.data.utils.Constants
 import top.yogiczy.mytv.core.data.utils.SP
 import top.yogiczy.mytv.tv.ui.screens.videoplayer.VideoPlayerDisplayMode
@@ -71,6 +72,9 @@ object Configs {
 
         /** 直播源可播放host列表 */
         IPTV_PLAYABLE_HOST_LIST,
+
+        /** 线路服务器（host:port）累计播放失败次数 */
+        IPTV_URL_HOST_FAILURE_COUNT,
 
         /** 是否启用数字选台 */
         IPTV_CHANNEL_NO_SELECT_ENABLE,
@@ -330,6 +334,46 @@ object Configs {
             SP.putStringSet(KEY.IPTV_PLAYABLE_HOST_LIST.name, value)
             notifyChange(KEY.IPTV_PLAYABLE_HOST_LIST)
         }
+
+    /**
+     * 线路服务器（host:port，见 [ChannelUtil.urlHost]）的累计播放失败次数。
+     *
+     * 同一台服务器上的所有线路共用一个计数：某台服务器挂了，
+     * 累积失败达 [Constants.IPTV_URL_HOST_BLACKLIST_THRESHOLD] 次即拉黑，
+     * 之后换到任何频道都不会再选到它上面的线路。
+     *
+     * 计数**不清零**，只在下一次刷新直播源时重置
+     * （见 MainViewModel.refreshChannel），所以这是个「一次抓取一代」的作用域。
+     */
+    var iptvUrlHostFailureCount: Map<String, Int>
+        get() {
+            val jsonString = SP.getString(KEY.IPTV_URL_HOST_FAILURE_COUNT.name, "").ifBlank { "{}" }
+            val type = object : TypeToken<Map<String, Int>>() {}.type
+            return Gson().fromJson(jsonString, type)
+        }
+        set(value) {
+            SP.putString(KEY.IPTV_URL_HOST_FAILURE_COUNT.name, Gson().toJson(value))
+            notifyChange(KEY.IPTV_URL_HOST_FAILURE_COUNT)
+        }
+
+    /** 当前已拉黑（失败达阈值）的线路服务器集合 */
+    val iptvBlacklistedUrlHosts: Set<String>
+        get() = iptvUrlHostFailureCount
+            .filterValues { it >= Constants.IPTV_URL_HOST_BLACKLIST_THRESHOLD }
+            .keys
+
+    /**
+     * 记一次线路播放失败。
+     *
+     * @return 该服务器是否因此次失败刚达到拉黑阈值（供上层提示用户）
+     */
+    fun recordIptvUrlHostFailure(host: String): Boolean {
+        if (host.isBlank()) return false
+
+        val count = (iptvUrlHostFailureCount[host] ?: 0) + 1
+        iptvUrlHostFailureCount = iptvUrlHostFailureCount + (host to count)
+        return count == Constants.IPTV_URL_HOST_BLACKLIST_THRESHOLD
+    }
 
     /** 是否启用数字选台 */
     var iptvChannelNoSelectEnable: Boolean

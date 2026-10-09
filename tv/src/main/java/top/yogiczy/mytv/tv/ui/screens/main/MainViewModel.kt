@@ -243,7 +243,13 @@ class MainViewModel(
             )
             val channelGroupList =
                 iptvRepository.getChannelGroupList(cacheTime = Configs.iptvSourceCacheTime)
-            emit(ChannelLoadResult(channelGroupList, iptvRepository.lastLoadUsedCacheFallback))
+            emit(
+                ChannelLoadResult(
+                    channelGroupList = channelGroupList,
+                    usedCacheFallback = iptvRepository.lastLoadUsedCacheFallback,
+                    hitNetwork = iptvRepository.lastLoadHitNetwork,
+                )
+            )
         }
             .retryWhen { _, attempt ->
                 if (attempt >= Constants.HTTP_RETRY_COUNT) return@retryWhen false
@@ -270,7 +276,7 @@ class MainViewModel(
                     }
                 }
             }
-            .map { (channelGroupList, usedCacheFallback) ->
+            .map { (channelGroupList, usedCacheFallback, hitNetwork) ->
                 // 长辈模式联网失败时会回退到旧缓存，内容可能过期。
                 // 不提示的话，用户会误以为看到的就是最新直播源。
                 if (usedCacheFallback) {
@@ -281,6 +287,15 @@ class MainViewModel(
                 } else if (notifySuccess) {
                     Snackbar.show("直播源已刷新：${channelGroupList.channelList.size} 个频道")
                 }
+
+                // 线路失败统计的作用域是「一次抓取一代直播源」：真的联网重抓过就重置。
+                // 纯读缓存（常规模式下缓存没过期）不算刷新，否则定时检查一跑
+                // 就把刚攒下的拉黑记录清空了；回退旧缓存同理也不算。
+                if (hitNetwork) {
+                    log.i("直播源已刷新，重置线路失败统计")
+                    Configs.iptvUrlHostFailureCount = emptyMap()
+                }
+
                 hybridChannel(channelGroupList)
             }
             .map {
@@ -446,10 +461,11 @@ data class ChannelListUpdate(
     val forceReplay: Boolean = false,
 )
 
-/** 一次直播源加载的结果，附带是否走了「联网失败回退旧缓存」这条兜底路径 */
+/** 一次直播源加载的结果，附带是否联网刷新、是否走了「联网失败回退旧缓存」这条兜底路径 */
 private data class ChannelLoadResult(
     val channelGroupList: ChannelGroupList,
     val usedCacheFallback: Boolean,
+    val hitNetwork: Boolean,
 )
 
 sealed interface MainUiState {

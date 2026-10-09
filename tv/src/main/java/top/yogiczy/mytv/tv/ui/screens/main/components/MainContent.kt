@@ -317,6 +317,8 @@ fun MainContent(
                 mainContentState.changeCurrentChannel(
                     mainContentState.currentChannel,
                     mainContentState.currentChannel.urlList.indexOf(it),
+                    // 用户显式指定线路时不跳过黑名单：他多半就是想试那条
+                    skipBlacklistedUrl = false,
                 )
             },
             onClose = { mainContentState.isChannelUrlScreenVisible = false },
