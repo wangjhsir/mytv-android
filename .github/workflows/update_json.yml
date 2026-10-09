@@ -12,6 +12,10 @@ on:
 
 jobs:
   update_json:
+    # 本工作流会把发布信息推送到 minyoad/mytv-android-update（需要 PAT_TOKEN），
+    # 只有上游仓库对该仓库有写权限。fork 上直接跳过，否则每次发布 Release
+    # 都会因 checkout 拿不到有效 token 而产生一次失败的运行。
+    if: github.repository == 'minyoad/mytv-android'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout mytv-android-update repository

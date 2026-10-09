@@ -113,7 +113,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # 11. 触发更新 JSON 工作流（beta 与正式都更新，由 update_json 分流到对应文件）
+      #     该工作流只在上游仓库真正执行（见 update_json.yml 的 if 守卫），fork 上会被跳过。
+      #     这里再允许失败一次：即使触发本身出错，APK 与 Release 也已经发布完成，
+      #     不应该把整个发布任务判为失败。
       - name: Trigger Update JSON Workflow
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
