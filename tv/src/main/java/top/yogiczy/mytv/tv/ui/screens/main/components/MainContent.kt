@@ -18,8 +18,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.flow.collect
 import top.yogiczy.mytv.core.data.entities.channel.ChannelGroupList
-import top.yogiczy.mytv.core.data.entities.channel.ChannelGroupList.Companion.channelIdx
+import top.yogiczy.mytv.core.data.entities.channel.ChannelGroupList.Companion.channelIdxInFileOrder
 import top.yogiczy.mytv.core.data.entities.channel.ChannelGroupList.Companion.channelList
+import top.yogiczy.mytv.core.data.entities.channel.ChannelGroupList.Companion.channelListInFileOrder
 import top.yogiczy.mytv.core.data.entities.channel.ChannelList
 import top.yogiczy.mytv.core.data.entities.epg.Epg
 import top.yogiczy.mytv.core.data.entities.epg.EpgList
@@ -54,6 +55,7 @@ import top.yogiczy.mytv.tv.ui.screens.main.MainViewModel
 import top.yogiczy.mytv.tv.ui.screens.videoplayercontroller.VideoPlayerControllerScreen
 import top.yogiczy.mytv.tv.ui.screens.videoplayerdiaplaymode.VideoPlayerDisplayModeScreen
 import top.yogiczy.mytv.tv.ui.screens.webview.WebViewScreen
+import top.yogiczy.mytv.tv.ui.utils.Configs
 import top.yogiczy.mytv.tv.ui.utils.captureBackKey
 import top.yogiczy.mytv.tv.ui.utils.handleDragGestures
 import top.yogiczy.mytv.tv.ui.utils.handleKeyEvents
@@ -81,8 +83,9 @@ fun MainContent(
         channelGroupListProvider = { filteredChannelGroupList },
     )
     val channelNumberSelectState = rememberChannelNumberSelectState {
+        // 数字选台按直播源文件顺序编号，与选台界面的分组无关
         val idx = it.toInt() - 1
-        filteredChannelGroupList.channelList.getOrNull(idx)?.let { channel ->
+        filteredChannelGroupList.channelListInFileOrder.getOrNull(idx)?.let { channel ->
             mainContentState.changeCurrentChannel(channel)
         }
     }
@@ -101,7 +104,11 @@ fun MainContent(
                 Lifecycle.Event.ON_START -> {
                     if (wasStopped) {
                         wasStopped = false
-                        mainContentState.restartCurrentChannel()
+                        // 长辈模式：先等 MainViewModel 重新拉取直播源，再由 channelListUpdated
+                        // (forceReplay) 驱动重新播放。这里立刻重启会先用旧地址拉一次流，白费一次。
+                        if (!Configs.elderMode) {
+                            mainContentState.restartCurrentChannel()
+                        }
                     }
                 }
 
@@ -116,9 +123,14 @@ fun MainContent(
 
     // 直播源刷新后重新绑定当前播放频道。
     // 频道 id 每次解析都会从 1 重新编号，沿用旧 Channel 对象会导致换台索引错位。
+    // forceReplay（长辈模式回到前台）时还要立刻用这份新列表重新拉流，
+    // 两步必须在同一个收集器里按序执行，否则重定位与重新拉流之间会有竞态。
     LaunchedEffect(Unit) {
-        MainViewModel.channelListUpdated.collect { newChannelGroupList ->
-            mainContentState.relocateCurrentChannel(newChannelGroupList)
+        MainViewModel.channelListUpdated.collect { update ->
+            mainContentState.relocateCurrentChannel(update.channelGroupList)
+            if (update.forceReplay) {
+                mainContentState.restartCurrentChannel()
+            }
         }
     }
 
@@ -249,7 +261,7 @@ fun MainContent(
         ChannelTempScreen(
             channelProvider = { mainContentState.currentChannel },
             channelUrlIdxProvider = { mainContentState.currentChannelUrlIdx },
-            channelNumberProvider = { filteredChannelGroupList.channelIdx(mainContentState.currentChannel) + 1 },
+            channelNumberProvider = { filteredChannelGroupList.channelIdxInFileOrder(mainContentState.currentChannel) + 1 },
             showChannelLogoProvider = { settingsViewModel.uiShowChannelLogo },
             recentEpgProgrammeProvider = {
                 epgListProvider().recentProgramme(mainContentState.currentChannel)
@@ -371,7 +383,8 @@ fun MainContent(
             currentChannelProvider = { mainContentState.currentChannel },
             currentChannelUrlIdxProvider = { mainContentState.currentChannelUrlIdx },
             currentChannelNumberProvider = {
-                (filteredChannelGroupList.channelList.indexOf(mainContentState.currentChannel) + 1).toString()
+                // 频道号按直播源文件顺序，与列表项编号、数字选台保持一致
+                (filteredChannelGroupList.channelIdxInFileOrder(mainContentState.currentChannel) + 1).toString()
             },
             showChannelLogoProvider = { settingsViewModel.uiShowChannelLogo },
             epgListProvider = epgListProvider,

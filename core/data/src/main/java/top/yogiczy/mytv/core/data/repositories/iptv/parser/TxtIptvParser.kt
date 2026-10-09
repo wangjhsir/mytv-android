@@ -24,6 +24,8 @@ class TxtIptvParser : IptvParser {
         val iptvList = mutableListOf<IptvResponseItem>()
 
         var groupName: String? = null
+        // 频道在文件中的出现次序：换台与数字选台以此为序，与分组无关
+        var channelOrder = 0
         lines.forEach { line ->
             if (line.isBlank() || line.startsWith("#") || line.startsWith("//")) return@forEach
 
@@ -33,10 +35,12 @@ class TxtIptvParser : IptvParser {
                 val res = line.split(",", "，")
                 if (res.size < 2) return@forEach
 
+                val order = channelOrder++
                 val channelName = ChannelUtil.standardChannelName(res[0].trim())
 
                 iptvList.addAll(res[1].split("#").map { url ->
                     IptvResponseItem(
+                        order = order,
                         name = res[0].trim(),
                         channelName = channelName,
                         groupName = groupName ?: "其他",
@@ -54,6 +58,7 @@ class TxtIptvParser : IptvParser {
                     
                     Channel(
                         name = nameEntry.key,
+                        order = nameEntry.value.minOf { it.order },
                         epgName = channelName,
                         urlList = nameEntry.value.map { it.url }.distinct(),
                         logo = "${Constants.CHANNEL_LOGO_SOURCE}${channelName}.png"
@@ -64,6 +69,7 @@ class TxtIptvParser : IptvParser {
     }
 
     private data class IptvResponseItem(
+        val order: Int,
         val name: String,
         val channelName: String,
         val groupName: String,

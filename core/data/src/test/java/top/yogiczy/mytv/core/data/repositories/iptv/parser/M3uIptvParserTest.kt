@@ -6,6 +6,10 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 import top.yogiczy.mytv.core.data.entities.channel.Channel
 import top.yogiczy.mytv.core.data.entities.channel.ChannelGroupList
+import top.yogiczy.mytv.core.data.entities.channel.ChannelGroupList.Companion.channelIdx
+import top.yogiczy.mytv.core.data.entities.channel.ChannelGroupList.Companion.channelIdxInFileOrder
+import top.yogiczy.mytv.core.data.entities.channel.ChannelGroupList.Companion.channelList
+import top.yogiczy.mytv.core.data.entities.channel.ChannelGroupList.Companion.channelListInFileOrder
 
 /**
  * m3u 直播源解析：多线路（多行地址）与 http-user-agent
@@ -191,5 +195,71 @@ class M3uIptvParserTest {
         )
 
         assertEquals("https://epg.example/e.xml.gz", groupList.epgUrl)
+    }
+
+    /**
+     * 频道 order 记录文件出现次序，与分组无关。
+     * 分组会把列表重排（同组的聚到一起），所以 order 与「扁平化后的下标」并不相同。
+     */
+    @Test
+    fun channelOrderRecordsFilePositionAcrossGroups() {
+        val groupList = parse(
+            """
+            #EXTM3U
+            #EXTINF:-1 tvg-name="A" group-title="G1",A
+            http://a.com/a
+            #EXTINF:-1 tvg-name="B" group-title="G2",B
+            http://a.com/b
+            #EXTINF:-1 tvg-name="C" group-title="G1",C
+            http://a.com/c
+            """.trimIndent(),
+        )
+
+        // 扁平化后按分组排列：G1(A,C) 在前，G2(B) 在后
+        assertEquals(listOf("A", "C", "B"), groupList.channelList.map { it.name })
+        // order 仍是文件中的出现次序
+        assertEquals(listOf(0, 2, 1), groupList.channelList.map { it.order })
+    }
+
+    /** 换台与数字选台取用的就是这份「文件顺序」投影 */
+    @Test
+    fun channelListInFileOrderRestoresFileSequence() {
+        val groupList = parse(
+            """
+            #EXTM3U
+            #EXTINF:-1 tvg-name="A" group-title="G1",A
+            http://a.com/a
+            #EXTINF:-1 tvg-name="B" group-title="G2",B
+            http://a.com/b
+            #EXTINF:-1 tvg-name="C" group-title="G1",C
+            http://a.com/c
+            """.trimIndent(),
+        )
+
+        val inFileOrder = groupList.channelListInFileOrder
+
+        assertEquals(listOf("A", "B", "C"), inFileOrder.map { it.name })
+        // B 在文件顺序里排第 2（下标 1），但在分组后的列表里排第 3（下标 2）
+        assertEquals(1, groupList.channelIdxInFileOrder(inFileOrder[1]))
+        assertEquals(2, groupList.channelIdx(inFileOrder[1]))
+    }
+
+    /** 多线路频道只占一个文件序号，不会因为有多行地址而把后续频道推后 */
+    @Test
+    fun multiLineChannelTakesSingleFileOrderSlot() {
+        val groupList = parse(
+            """
+            #EXTM3U
+            #EXTINF:-1 tvg-name="A" group-title="G",A
+            http://a.com/1
+            http://a.com/2
+            http://a.com/3
+            #EXTINF:-1 tvg-name="B" group-title="G",B
+            http://a.com/b
+            """.trimIndent(),
+        )
+
+        assertEquals(listOf("A", "B"), groupList.channelListInFileOrder.map { it.name })
+        assertEquals(listOf(0, 1), groupList.channelListInFileOrder.map { it.order })
     }
 }

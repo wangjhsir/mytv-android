@@ -43,8 +43,12 @@ fun VideoPlayerScreen(
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                // 从后台恢复时，由于直播源的特殊性，重新 prepare 最新的直播流
-                state.reprepare()
+                // 从后台恢复时，由于直播源的特殊性，重新 prepare 最新的直播流。
+                // 长辈模式改由 MainViewModel 先刷新直播源、再经 channelListUpdated(forceReplay)
+                // 驱动重新播放；这里立刻 prepare 会先用旧地址拉一次流，白费一次。
+                if (!Configs.elderMode) {
+                    state.reprepare()
+                }
                 state.play()
             } else if (event == Lifecycle.Event.ON_STOP) {
                 state.stop()

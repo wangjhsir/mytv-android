@@ -22,7 +22,9 @@ import androidx.core.content.ContextCompat
 import top.yogiczy.mytv.core.data.entities.channel.Channel
 import top.yogiczy.mytv.core.data.entities.channel.ChannelGroupList
 import top.yogiczy.mytv.core.data.entities.channel.ChannelGroupList.Companion.channelIdx
+import top.yogiczy.mytv.core.data.entities.channel.ChannelGroupList.Companion.channelIdxInFileOrder
 import top.yogiczy.mytv.core.data.entities.channel.ChannelGroupList.Companion.channelList
+import top.yogiczy.mytv.core.data.entities.channel.ChannelGroupList.Companion.channelListInFileOrder
 import top.yogiczy.mytv.core.data.entities.epg.EpgProgramme
 import top.yogiczy.mytv.core.data.entities.epg.EpgProgrammeReserve
 import top.yogiczy.mytv.core.data.entities.epg.EpgProgrammeReserveList
@@ -183,15 +185,16 @@ class MainContentState(
         val channelGroupList = channelGroupListProvider()
 
         val favoriteChannelNameList = settingsViewModel.iptvChannelFavoriteList
+        // 收藏列表内部也按文件顺序排列，与普通换台一致
         val favoriteChannelList =
-            channelGroupList.channelList.filter { it.name in favoriteChannelNameList }
+            channelGroupList.channelListInFileOrder.filter { it.name in favoriteChannelNameList }
 
         return if (_currentChannel in favoriteChannelList && _currentChannel != favoriteChannelList.first()) {
             val currentIdx = favoriteChannelList.indexOf(_currentChannel)
             favoriteChannelList[currentIdx - 1]
         } else if (settingsViewModel.iptvChannelFavoriteChangeBoundaryJumpOut) {
             settingsViewModel.iptvChannelFavoriteListVisible = false
-            channelGroupList.channelList.lastOrNull()
+            channelGroupList.channelListInFileOrder.lastOrNull()
         } else {
             favoriteChannelList.lastOrNull()
         }
@@ -204,15 +207,16 @@ class MainContentState(
         val channelGroupList = channelGroupListProvider()
 
         val favoriteChannelNameList = settingsViewModel.iptvChannelFavoriteList
+        // 收藏列表内部也按文件顺序排列，与普通换台一致
         val favoriteChannelList =
-            channelGroupList.channelList.filter { it.name in favoriteChannelNameList }
+            channelGroupList.channelListInFileOrder.filter { it.name in favoriteChannelNameList }
 
         return if (_currentChannel in favoriteChannelList && _currentChannel != favoriteChannelList.last()) {
             val currentIdx = favoriteChannelList.indexOf(_currentChannel)
             favoriteChannelList[currentIdx + 1]
         } else if (settingsViewModel.iptvChannelFavoriteChangeBoundaryJumpOut) {
             settingsViewModel.iptvChannelFavoriteListVisible = false
-            channelGroupList.channelList.firstOrNull()
+            channelGroupList.channelListInFileOrder.firstOrNull()
         } else {
             favoriteChannelList.firstOrNull()
         }
@@ -221,10 +225,11 @@ class MainContentState(
     private fun getPrevChannel(): Channel {
         return getPrevFavoriteChannel() ?: run {
             val channelGroupList = channelGroupListProvider()
-            val channelList = channelGroupList.channelList
+            // 换台顺序严格按直播源文件顺序，不随分组改变
+            val channelList = channelGroupList.channelListInFileOrder
             if (channelList.isEmpty()) return Channel()
 
-            val currentIdx = channelGroupList.channelIdx(_currentChannel)
+            val currentIdx = channelGroupList.channelIdxInFileOrder(_currentChannel)
             // currentIdx < 0 表示当前频道已不在列表中（如直播源刷新后残留旧对象）。
             // 显式处理，不再依赖 getOrElse 的越界兜底（原写法会传入 -1 之类的非法下标）。
             return if (currentIdx <= 0) channelList.last() else channelList[currentIdx - 1]
@@ -234,10 +239,11 @@ class MainContentState(
     private fun getNextChannel(): Channel {
         return getNextFavoriteChannel() ?: run {
             val channelGroupList = channelGroupListProvider()
-            val channelList = channelGroupList.channelList
+            // 换台顺序严格按直播源文件顺序，不随分组改变
+            val channelList = channelGroupList.channelListInFileOrder
             if (channelList.isEmpty()) return Channel()
 
-            val currentIdx = channelGroupList.channelIdx(_currentChannel)
+            val currentIdx = channelGroupList.channelIdxInFileOrder(_currentChannel)
             return if (currentIdx < 0 || currentIdx >= channelList.lastIndex) {
                 channelList.first()
             } else {

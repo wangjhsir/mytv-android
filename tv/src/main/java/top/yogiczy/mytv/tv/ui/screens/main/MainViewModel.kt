@@ -98,7 +98,7 @@ class MainViewModel(
                 // 无缓存（含长辈模式）时，顺序执行以保证首次加载体验：
                 // 先拿到频道列表再拉节目单，期间停留在加载状态
                 hybridJob.join()
-                refreshChannel(showLoading = true)
+                refreshChannel(showLoading = true, notifySuccess = Configs.elderMode)
                 refreshEpg()
             }
 
@@ -133,6 +133,13 @@ class MainViewModel(
      */
     fun onAppResume() {
         viewModelScope.launch {
+            // 长辈模式：每次从后台回到前台都强制重新联网拉取直播源（不读缓存），
+            // 拿到后用这份内容重新拉流播放。静默进行，不遮挡正在播放的画面。
+            if (Configs.elderMode) {
+                log.i("长辈模式：回到前台，强制刷新直播源")
+                refreshChannel(showLoading = false, forceReplay = true, notifySuccess = true)
+            }
+
             val currentDate = LocalDate.now()
             val lastUpdateDate = lastEpgUpdateTimestamp.takeIf { it != 0L }
                 ?.let {
@@ -219,7 +226,13 @@ class MainViewModel(
      *
      * @return 频道列表是否发生变化（false 表示与上次一致、列表为空或拉取失败）
      */
-    private suspend fun refreshChannel(showLoading: Boolean = true): Boolean {
+    private suspend fun refreshChannel(
+        showLoading: Boolean = true,
+        /** 长辈模式回到前台：即使内容没变，也要让播放层用这份内容重新拉流 */
+        forceReplay: Boolean = false,
+        /** 刷新成功后是否提示用户（长辈模式用它确认「确实重新抓取过」） */
+        notifySuccess: Boolean = false,
+    ): Boolean {
         var changed = false
 
         flow {
@@ -249,6 +262,13 @@ class MainViewModel(
                 } else {
                     log.e("后台刷新直播源失败", it)
                 }
+                // 长辈模式回前台时就算刷新失败也要重启播放：否则长时间后台后
+                // 画面会停在旧的缓冲内容上不恢复（此时沿用最近一次成功的列表）
+                if (forceReplay) {
+                    lastKnownChannelGroupList?.let {
+                        CHANNEL_LIST_UPDATED_SIGNAL.tryEmit(ChannelListUpdate(it, forceReplay = true))
+                    }
+                }
             }
             .map { (channelGroupList, usedCacheFallback) ->
                 // 长辈模式联网失败时会回退到旧缓存，内容可能过期。
@@ -258,6 +278,8 @@ class MainViewModel(
                         "网络异常，已使用本地缓存的直播源（可能不是最新）",
                         type = SnackbarType.ERROR,
                     )
+                } else if (notifySuccess) {
+                    Snackbar.show("直播源已刷新：${channelGroupList.channelList.size} 个频道")
                 }
                 hybridChannel(channelGroupList)
             }
@@ -265,23 +287,28 @@ class MainViewModel(
                 // 只有当数据真的变化时才更新 UI，避免冗余刷新
                 val currentState = _uiState.value
                 val isPopulated = it.channelList.isNotEmpty()
+                val listChanged = currentState !is MainUiState.Ready ||
+                    (isPopulated && currentState.channelGroupList != it)
 
                 if (isPopulated) {
                     // 缓存最近一次成功的频道列表，用于 refreshEpg 兜底（避免 UI 进 Error 后 EPG 永久不刷新）
                     lastKnownChannelGroupList = it
                 }
 
-                if (currentState !is MainUiState.Ready || (isPopulated && currentState.channelGroupList != it)) {
+                if (listChanged || forceReplay) {
                     _uiState.value = MainUiState.Ready(
                         channelGroupList = it,
                         epgList = (currentState as? MainUiState.Ready)?.epgList ?: EpgList()
                     )
-                    changed = true
-                    // 直播源已更新，假定失效线路已从新列表中移除，旧的线路索引记忆不再有效，
-                    // 全部复位到 0；后续某条线路播放成功时再由 setIptvChannelUrlIdx 重新记录。
-                    Configs.iptvChannelUrlIdx = emptyMap()
-                    // 频道 id 每次解析都会重新编号，通知播放层把当前频道重新映射到新列表
-                    CHANNEL_LIST_UPDATED_SIGNAL.tryEmit(it)
+                    if (listChanged) {
+                        changed = true
+                        // 直播源已更新，假定失效线路已从新列表中移除，旧的线路索引记忆不再有效，
+                        // 全部复位到 0；后续某条线路播放成功时再由 setIptvChannelUrlIdx 重新记录。
+                        Configs.iptvChannelUrlIdx = emptyMap()
+                    }
+                    // 频道 id 每次解析都会重新编号，通知播放层把当前频道重新映射到新列表；
+                    // forceReplay 时播放层还会用新列表重新拉流（长辈模式回到前台）
+                    CHANNEL_LIST_UPDATED_SIGNAL.tryEmit(ChannelListUpdate(it, forceReplay))
                 } else if (!isPopulated && !showLoading) {
                     log.w("后台刷新直播源获取到空列表，已忽略以防止 UI 变空")
                 }
@@ -399,11 +426,25 @@ class MainViewModel(
          * 按频道名把当前播放频道重新绑定到新列表中的对应条目。
          * 之所以不直接监听 uiState 的列表变化，是因为 UI 上的列表还叠加了
          * 分组隐藏/省份过滤，切换这些设置也会导致列表变化，但并不应该触发重定位。
+         *
+         * forceReplay 为 true 时（长辈模式回到前台），播放层还要用新列表重新拉流。
          */
-        private val CHANNEL_LIST_UPDATED_SIGNAL = MutableSharedFlow<ChannelGroupList>(extraBufferCapacity = 1)
-        val channelListUpdated: SharedFlow<ChannelGroupList> = CHANNEL_LIST_UPDATED_SIGNAL.asSharedFlow()
+        private val CHANNEL_LIST_UPDATED_SIGNAL =
+            MutableSharedFlow<ChannelListUpdate>(extraBufferCapacity = 1)
+        val channelListUpdated: SharedFlow<ChannelListUpdate> =
+            CHANNEL_LIST_UPDATED_SIGNAL.asSharedFlow()
     }
 }
+
+/**
+ * 直播源刷新后的通知。
+ *
+ * @param forceReplay 是否要求播放层用这份列表强制重新拉流（长辈模式回到前台时为 true）
+ */
+data class ChannelListUpdate(
+    val channelGroupList: ChannelGroupList,
+    val forceReplay: Boolean = false,
+)
 
 /** 一次直播源加载的结果，附带是否走了「联网失败回退旧缓存」这条兜底路径 */
 private data class ChannelLoadResult(

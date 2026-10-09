@@ -36,5 +36,18 @@ data class ChannelGroupList(
 
         val ChannelGroupList.channelList: ChannelList
             get() = ChannelList(this.asSequence().flatMap { it.channelList.asSequence() }.toList())
+
+        /**
+         * 按直播源文件顺序排列的频道列表。
+         *
+         * 换台（上下键）与数字选台以此为序，**不受分组影响**：
+         * 选台界面仍按分组展示，但换台是跨分组按文件顺序走的。
+         */
+        val ChannelGroupList.channelListInFileOrder: ChannelList
+            get() = ChannelList(channelList.sortedBy { it.order })
+
+        /** 频道在[文件顺序][channelListInFileOrder]中的下标，未找到返回 -1 */
+        fun ChannelGroupList.channelIdxInFileOrder(channel: Channel) =
+            channelListInFileOrder.indexOfFirst { it == channel }
     }
 }

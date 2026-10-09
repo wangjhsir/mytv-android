@@ -31,9 +31,13 @@ class M3uIptvParser : IptvParser {
                 ?: extractAttribute(header, "tvg-url")
         }
 
+        // 频道在文件中的出现次序：换台与数字选台以此为序，与分组无关
+        var channelOrder = 0
+
         lines.forEachIndexed { index, line ->
             if (!line.startsWith("#EXTINF")) return@forEachIndexed
 
+            val order = channelOrder++
             val name = line.substringAfterLast(",").trim()
             val channelName = ChannelUtil.standardChannelName(extractAttribute(line, "tvg-name") ?: name)
             val groupName = extractAttribute(line, "group-title") ?: "其他"
@@ -59,6 +63,7 @@ class M3uIptvParser : IptvParser {
             urlList.forEach { url ->
                 iptvList.add(
                     IptvResponseItem(
+                        order = order,
                         name = name,
                         channelName = channelName,
                         groupName = groupName,
@@ -77,6 +82,7 @@ class M3uIptvParser : IptvParser {
                     channelList = ChannelList(groupEntry.value.groupBy { it.name }.map { nameEntry ->
                         Channel(
                             name = nameEntry.key,
+                            order = nameEntry.value.minOf { it.order },
                             epgName = nameEntry.value.first().channelName,
                             urlList = nameEntry.value.map { it.url }.distinct(),
                             userAgent = nameEntry.value.firstNotNullOfOrNull { it.userAgent },
@@ -145,6 +151,7 @@ class M3uIptvParser : IptvParser {
     }
 
     private data class IptvResponseItem(
+        val order: Int,
         val name: String,
         val channelName: String,
         val groupName: String,

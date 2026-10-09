@@ -4,6 +4,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Request
 import top.yogiczy.mytv.core.data.entities.channel.ChannelGroupList
+import top.yogiczy.mytv.core.data.entities.channel.ChannelGroupList.Companion.channelList
 import top.yogiczy.mytv.core.data.entities.channel.ChannelList
 import top.yogiczy.mytv.core.data.entities.iptvsource.IptvSource
 import top.yogiczy.mytv.core.data.network.OkHttp
@@ -167,12 +168,19 @@ class IptvRepository(
             val startTime = System.currentTimeMillis()
             val groupList = parser.parse(sourceData)
 
-            // 在获取到频道列表后，统一生成数字序号 ID
+            // 频道编号按直播源文件顺序生成，与分组无关：选台界面虽然仍按分组展示，
+            // 但上下键换台、数字选台、列表里的频道号三者保持一致，都等于文件顺序。
+            // 解析器没写 order 时（如不支持格式的占位源）全部为 0，稳定排序会退回原有顺序。
             idGenerator.reset()
+            val idByName = HashMap<String, String>()
+            groupList.channelList
+                .sortedBy { it.order }
+                .forEach { idByName[it.name] = idGenerator.nextId().toString() }
+
             val groupListWithIds = ChannelGroupList(
                 value = groupList.map { group ->
                     group.copy(channelList = ChannelList(group.channelList.map { channel ->
-                        channel.copy(id = idGenerator.nextId().toString())
+                        channel.copy(id = idByName[channel.name] ?: channel.id)
                     }))
                 },
                 epgUrl = groupList.epgUrl,

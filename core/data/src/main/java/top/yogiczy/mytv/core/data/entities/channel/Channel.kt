@@ -9,9 +9,19 @@ import java.util.concurrent.atomic.AtomicInteger
 @Immutable
 data class Channel(
     /**
-     * 频道ID
+     * 频道ID，展示为频道号
      */
-    val id: String = "0", // 使用序号生成 ID
+    val id: String = "0", // 按直播源文件顺序生成
+
+    /**
+     * 频道在直播源文件中的出现次序（0 起）。
+     *
+     * 换台顺序与数字选台编号都以此为准，**与分组无关**：
+     * 选台界面仍按分组展示，但上下键是跨分组按文件顺序走的。
+     * 解析器未写入时全部为 0，排序稳定，会退回列表原有顺序。
+     */
+    val order: Int = 0,
+
     /**
      * 频道名称
      */

@@ -42,7 +42,7 @@ import top.yogiczy.mytv.core.data.entities.channel.Channel
 import top.yogiczy.mytv.core.data.entities.channel.ChannelGroup
 import top.yogiczy.mytv.core.data.entities.channel.ChannelGroupList
 import top.yogiczy.mytv.core.data.entities.channel.ChannelGroupList.Companion.channelGroupIdx
-import top.yogiczy.mytv.core.data.entities.channel.ChannelGroupList.Companion.channelIdx
+import top.yogiczy.mytv.core.data.entities.channel.ChannelGroupList.Companion.channelIdxInFileOrder
 import top.yogiczy.mytv.core.data.entities.channel.ChannelGroupList.Companion.channelList
 import top.yogiczy.mytv.core.data.entities.channel.ChannelList
 import top.yogiczy.mytv.core.data.entities.epg.EpgList
@@ -237,7 +237,8 @@ fun ClassicChannelScreen(
 
     ChannelScreenTopRight(
         channelNumberProvider = {
-            (channelGroupListProvider().channelIdx(currentChannelProvider()) + 1)
+            // 频道号按直播源文件顺序，与列表项的编号、数字选台保持一致
+            (channelGroupListProvider().channelIdxInFileOrder(currentChannelProvider()) + 1)
                 .toString()
                 .padStart(2, '0')
         },
