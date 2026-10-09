@@ -44,6 +44,7 @@ class IJKVideoPlayer(
     private val log = Logger.create(IJKVideoPlayer::class.java.simpleName)
 
     private var currentUrl: String? = null
+    private var currentUserAgent: String? = null
     private var retryCount = 0
     private var prepareJob: Job? = null
     private var autoRetryJob: Job? = null
@@ -287,8 +288,9 @@ class IJKVideoPlayer(
     }
 
     /** 外部主动发起的播放(切台/换源/重启等)，视为一次全新开始，清空连续失败计数与重连状态 */
-    override fun prepare(url: String) {
+    override fun prepare(url: String, userAgent: String?) {
         currentUrl = url
+        currentUserAgent = userAgent
         retryCount = 0
         resetReconnectState(endBuffering = true)
         launchPrepare(url)
@@ -321,8 +323,16 @@ class IJKVideoPlayer(
                     if (currentSurface != null) {
                         ijkPlayer.setSurface(currentSurface)
                     }
-                    /* 关键：不要带任何自定义头，防止服务器拒SETUP */
-                    val headers = emptyMap<String, String>()   // ← 空 map，让 FFmpeg 走原生流程
+                    /* 关键：RTSP 不要带任何自定义头，防止服务器拒SETUP；
+                       仅对 http(s) 源附带直播源指定的 User-Agent，未指定时保持空 map，
+                       让 FFmpeg 走原生流程 */
+                    val userAgent = currentUserAgent
+                        ?.takeIf { url.startsWith("http://") || url.startsWith("https://") }
+                    val headers: Map<String, String> = if (userAgent != null) {
+                        mapOf("User-Agent" to userAgent)
+                    } else {
+                        emptyMap()
+                    }
                     ijkPlayer.setDataSource(context, Uri.parse(url), headers)
                     setOption()
                     ijkPlayer.prepareAsync()

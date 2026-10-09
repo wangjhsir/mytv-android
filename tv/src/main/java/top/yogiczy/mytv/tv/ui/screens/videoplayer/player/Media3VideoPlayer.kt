@@ -12,6 +12,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.util.Util
+import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DecoderReuseEvaluation
@@ -65,21 +66,30 @@ class Media3VideoPlayer(
             .build()
             .apply { playWhenReady = true }
     }
-    private val dataSourceFactory by lazy {
+    /**
+     * 构造数据源工厂。
+     *
+     * UA 按线路取值（m3u 的 http-user-agent），未指定时回退到全局配置。
+     * 每次 prepare 重新构造即可：DataSource 本来就是随 MediaSource 重建的，
+     * 工厂本身只是配置载体，不持有连接。
+     */
+    private fun dataSourceFactory(userAgent: String?): DataSource.Factory =
         DefaultDataSource.Factory(
             context,
             DefaultHttpDataSource.Factory().apply {
-                setUserAgent(Configs.videoPlayerUserAgent)
+                setUserAgent(userAgent ?: Configs.videoPlayerUserAgent)
                 setConnectTimeoutMs(Configs.videoPlayerLoadTimeout.toInt())
                 setReadTimeoutMs(Configs.videoPlayerLoadTimeout.toInt())
                 setKeepPostFor302Redirects(true)
                 setAllowCrossProtocolRedirects(true)
             },
         )
-    }
 
     private val contentTypeAttempts = mutableMapOf<Int, Boolean>()
     private var updatePositionJob: Job? = null
+
+    /** 当前线路的 UA，供容器重试时复用 */
+    private var currentUserAgent: String? = null
 
     /** IO 类错误（瞬态，如流中断）已重试次数；源不可达类错误不重试 */
     private var ioRetryCount = 0
@@ -188,9 +198,11 @@ class Media3VideoPlayer(
                 .createMediaSource(mediaItem)
         }
 
+        val httpDataSourceFactory = dataSourceFactory(currentUserAgent)
+
         return when (val type = contentType ?: Util.inferContentType(uri)) {
             C.CONTENT_TYPE_HLS -> {
-                HlsMediaSource.Factory(dataSourceFactory).createMediaSource(mediaItem)
+                HlsMediaSource.Factory(httpDataSourceFactory).createMediaSource(mediaItem)
             }
 
             C.CONTENT_TYPE_RTSP -> {
@@ -204,7 +216,7 @@ class Media3VideoPlayer(
             }
 
             C.CONTENT_TYPE_OTHER -> {
-                ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(mediaItem)
+                ProgressiveMediaSource.Factory(httpDataSourceFactory).createMediaSource(mediaItem)
             }
 
             else -> {
@@ -426,7 +438,8 @@ class Media3VideoPlayer(
         super.release()
     }
 
-    override fun prepare(url: String) {
+    override fun prepare(url: String, userAgent: String?) {
+        currentUserAgent = userAgent
         contentTypeAttempts.clear()
         prepare(Uri.parse(url.let {
             if (url.endsWith("?")) "${it}t" else it

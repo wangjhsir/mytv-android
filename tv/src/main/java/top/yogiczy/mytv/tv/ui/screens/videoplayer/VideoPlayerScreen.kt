@@ -44,7 +44,7 @@ fun VideoPlayerScreen(
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 // 从后台恢复时，由于直播源的特殊性，重新 prepare 最新的直播流
-                state.currentUrl?.let { state.prepare(it) }
+                state.reprepare()
                 state.play()
             } else if (event == Lifecycle.Event.ON_STOP) {
                 state.stop()

@@ -22,7 +22,12 @@ abstract class VideoPlayer(
         clearAllListeners()
     }
 
-    abstract fun prepare(url: String)
+    /**
+     * 播放指定地址。
+     *
+     * @param userAgent 直播源为该线路指定的 User-Agent，为空时由实现回退到全局配置
+     */
+    abstract fun prepare(url: String, userAgent: String? = null)
 
     abstract fun play()
 

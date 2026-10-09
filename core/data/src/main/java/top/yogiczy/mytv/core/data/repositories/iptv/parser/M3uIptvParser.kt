@@ -38,27 +38,32 @@ class M3uIptvParser : IptvParser {
             val channelName = ChannelUtil.standardChannelName(extractAttribute(line, "tvg-name") ?: name)
             val groupName = extractAttribute(line, "group-title") ?: "其他"
             val logo = extractAttribute(line, "tvg-logo") ?: extractAttribute(line, "logo")
-            
-            // 💡 优化：向后查找真正的 URL，跳过空行和其他标签行
-            var url: String? = null
+
+            // 💡 多线路：允许一个 #EXTINF 后面跟多行播放地址（部分直播源以此承载同一
+            // 频道的多条线路）。收集到下一个频道标签为止的所有地址行，任一线路都不可丢。
+            var userAgent = extractUserAgent(line)
+            val urlList = mutableListOf<String>()
             for (i in (index + 1)..<lines.size) {
                 val nextLine = lines[i].trim()
+                if (nextLine.startsWith("#EXTINF")) break // 遇到下一个频道标签，说明当前频道结束
                 if (nextLine.isBlank()) continue
-                if (nextLine.startsWith("#")) {
-                    if (nextLine.startsWith("#EXTINF")) break // 遇到下一个频道标签，说明当前频道无 URL
+                // 标签行（如 VLC 风格的 #EXTVLCOPT:http-user-agent=xxx），
+                // 以及少数源里单独成行的 `http-user-agent="xxx"`：只取其中的 User-Agent
+                if (nextLine.startsWith("#") || isAttributeLine(nextLine)) {
+                    extractUserAgent(nextLine)?.let { userAgent = it }
                     continue
                 }
-                url = nextLine
-                break
+                urlList.add(nextLine)
             }
 
-            if (!url.isNullOrBlank()) {
+            urlList.forEach { url ->
                 iptvList.add(
                     IptvResponseItem(
                         name = name,
                         channelName = channelName,
                         groupName = groupName,
                         url = url,
+                        userAgent = userAgent,
                         logo = logo,
                     )
                 )
@@ -74,6 +79,7 @@ class M3uIptvParser : IptvParser {
                             name = nameEntry.key,
                             epgName = nameEntry.value.first().channelName,
                             urlList = nameEntry.value.map { it.url }.distinct(),
+                            userAgent = nameEntry.value.firstNotNullOfOrNull { it.userAgent },
                             logo = nameEntry.value.first().logo
                         )
                     })
@@ -82,6 +88,31 @@ class M3uIptvParser : IptvParser {
             epgUrl = epgUrl,
         )
     }
+
+    /**
+     * 提取请求 User-Agent。
+     *
+     * 直播源中常见两种写法，后者为 VLC 风格、独立成行：
+     *  - `#EXTINF:-1 http-user-agent="AptvPlayer-UA",频道名`
+     *  - `#EXTVLCOPT:http-user-agent=AptvPlayer-UA`
+     *
+     * `user-agent` 兜底用于只写了裸属性名的源；由于 `http-user-agent=` 以 `user-agent=` 结尾，
+     * 该兜底命中的是同一个值，不会误取到其它内容。
+     */
+    private fun extractUserAgent(line: String): String? {
+        return extractAttribute(line, "http-user-agent")
+            ?: extractAttribute(line, "user-agent")
+    }
+
+    /**
+     * 判断是否为「属性赋值」行，例如 `http-user-agent="AptvPlayer-UA"`。
+     *
+     * 少数直播源会把属性拆到单独一行。这类行没有 `://` 却带 `=`，
+     * 不能收进 urlList，否则会多出一条永远播不通的线路。真实播放地址都带 scheme，
+     * 因此不会误伤。
+     */
+    private fun isAttributeLine(line: String): Boolean =
+        line.contains("=") && !line.contains("://")
 
     /**
      * 高性能属性提取（避免使用正则）
@@ -118,6 +149,7 @@ class M3uIptvParser : IptvParser {
         val channelName: String,
         val groupName: String,
         val url: String,
+        val userAgent: String?,
         val logo: String?,
     )
 }

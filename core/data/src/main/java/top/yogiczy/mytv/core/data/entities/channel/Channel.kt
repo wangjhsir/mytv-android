@@ -23,9 +23,15 @@ data class Channel(
     val epgName: String = "",
 
     /**
-     * 播放地址
+     * 播放地址，多条即为多线路
      */
     val urlList: List<String> = listOf("http://1.2.3.4"),
+
+    /**
+     * 播放请求的 User-Agent，来自直播源的 http-user-agent 等属性；
+     * 为空时由播放器回退到全局配置
+     */
+    val userAgent: String? = null,
 
     /**
      * 台标

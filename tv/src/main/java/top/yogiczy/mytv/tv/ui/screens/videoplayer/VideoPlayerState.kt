@@ -31,6 +31,10 @@ class VideoPlayerState(
     var currentUrl: String? = null
         private set
 
+    /** 当前线路的 UA，重新 prepare 时沿用 */
+    var currentUserAgent: String? = null
+        private set
+
     private var currentSurface: Any? = null
     private var currentTexture: Any? = null
 
@@ -60,11 +64,17 @@ class VideoPlayerState(
 
     private var isAutoDisplayModeSet = false
 
-    fun prepare(url: String) {
+    fun prepare(url: String, userAgent: String? = null) {
         currentUrl = url
+        currentUserAgent = userAgent
         error = null
         isAutoDisplayModeSet = false
-        instance.prepare(url)
+        instance.prepare(url, userAgent)
+    }
+
+    /** 用最近一次的地址与 UA 重新 prepare（后台恢复、切换播放器内核等场景） */
+    fun reprepare() {
+        currentUrl?.let { prepare(it, currentUserAgent) }
     }
 
     fun play() {
@@ -144,7 +154,7 @@ class VideoPlayerState(
                 initialize()
                 
                 // 恢复播放状态
-                prepare(url)
+                prepare(url, currentUserAgent)
                 seekTo(position)
                 if (wasPlaying) play()
                 

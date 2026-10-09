@@ -300,7 +300,7 @@ class MainContentState(
         if (ChannelUtil.isHybridWebViewUrl(url)) {
             videoPlayerState.stop()
         } else {
-            videoPlayerState.prepare(url)
+            videoPlayerState.prepare(url, _currentChannel.userAgent)
         }
     }
 
