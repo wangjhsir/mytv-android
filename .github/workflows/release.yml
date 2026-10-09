@@ -20,6 +20,13 @@ on:
 #     - versionName 含 "beta" -> prerelease=true，更新 tv-beta.json
 #     - 否则             -> 正式版，更新 tv-stable.json
 
+# fork 的 GITHUB_TOKEN 默认只有只读权限，必须显式申请写权限，否则：
+#   - 第 10 步创建 GitHub Release 会 403 Resource not accessible by integration
+#   - 第 11 步 gh workflow run 需要 actions: write
+permissions:
+  contents: write
+  actions: write
+
 jobs:
   build_apk:
     runs-on: ubuntu-latest
